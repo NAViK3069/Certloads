@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Scissors, SlidersHorizontal, Table2 } from 'lucide-react'
 import { openPdf, readPage, renderThumb, type OpenedPdf, type PageInfo } from '../../lib/pdf'
-import { NAME_PARTS, allFields, autoMapping, buildTable, type Mapping, type Overrides } from '../../lib/certificate'
+import { NAME_PARTS, allFields, autoMapping, buildTable, fieldLabel, fieldToken, type Mapping, type Overrides } from '../../lib/certificate'
+import { useI18n, type Key } from '../../i18n'
 import Dropzone from './Dropzone'
 import MappingEditor from './MappingEditor'
 import SplitPanel from './SplitPanel'
@@ -23,9 +24,10 @@ export default function CertificateTool() {
   const [view, setView] = useState<TableView>({ order: [], hidden: new Set(), labels: {} })
   const [thumbs, setThumbs] = useState<string[]>([])
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<Key | ''>('')
   const [mode, setMode] = useState<Mode>('split')
   const [editing, setEditing] = useState(false)
+  const { lang, t } = useI18n()
   const docRef = useRef<OpenedPdf | null>(null)
   const loadId = useRef(0)
   const priority = useRef(0) // จำนวนงานวาดรูปที่ต้องทำก่อนรูปย่อ (เช่น รูปใหญ่ในตัวแก้ไข)
@@ -98,7 +100,7 @@ export default function CertificateTool() {
       console.error(e)
       setProgress(null)
       const msg = e instanceof Error ? e.message : String(e)
-      setError(/password/i.test(msg) ? 'ไฟล์นี้ติดรหัสผ่าน กรุณาปลดรหัสก่อนใช้งาน' : 'เปิดไฟล์ไม่ได้ — ตรวจสอบว่าเป็นไฟล์ PDF ที่ไม่เสียหาย')
+      setError(/password/i.test(msg) ? 'error.password' : 'error.open')
     }
   }
 
@@ -135,17 +137,15 @@ export default function CertificateTool() {
     <section className="tool">
       <div className="tool-head">
         <h1>Certificate</h1>
-        <p>อัปโหลดไฟล์ใบประกาศ (PDF หลายหน้า) แล้วเลือกว่าจะแยกเป็นไฟล์ละหน้า หรือดึงรายชื่อออกมาเป็นตาราง</p>
+        <p>{t('cert.intro')}</p>
       </div>
 
       {!file && !progress && <Dropzone onFile={load} />}
-      {error && <div className="alert error">{error}</div>}
+      {error && <div className="alert error">{t(error)}</div>}
 
       {progress && (
         <div className="card loading">
-          <div>
-            กำลังอ่านไฟล์… {progress.done}/{progress.total} หน้า
-          </div>
+          <div>{t('loading.reading', { done: progress.done, total: progress.total })}</div>
           <div className="bar">
             <div style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
           </div>
@@ -160,35 +160,31 @@ export default function CertificateTool() {
             </div>
             <div className="file-meta">
               <strong title={file.name}>{file.name}.pdf</strong>
-              <span>
-                {file.pages.length} หน้า · {(file.size / 1024 / 1024).toFixed(1)} MB
-              </span>
+              <span>{t('file.meta', { pages: file.pages.length, mb: (file.size / 1024 / 1024).toFixed(1) })}</span>
             </div>
             <button className="btn ghost" onClick={reset}>
-              เปลี่ยนไฟล์
+              {t('file.change')}
             </button>
           </div>
 
           {noText ? (
-            <div className="alert warn">
-              ไฟล์นี้ไม่มีข้อความที่อ่านได้ (อาจเป็นภาพสแกน) — ยังแยกไฟล์ได้ แต่ดึงรายชื่อเป็นตารางไม่ได้
-            </div>
+            <div className="alert warn">{t('warn.noText')}</div>
           ) : (
             <div className="card mapping-bar">
               <div className="mapping-info">
-                <span className="mapping-title">ช่องข้อมูลที่จับได้</span>
+                <span className="mapping-title">{t('map.title')}</span>
                 <div className="chips">
-                  {boundFields.length === 0 && <span className="hint">ยังไม่ได้ผูกช่องใดเลย</span>}
+                  {boundFields.length === 0 && <span className="hint">{t('map.none')}</span>}
                   {boundFields.map((f) => (
-                    <span key={f.key} className="token" title={f.label}>
-                      {`{${f.token}}`}
+                    <span key={f.key} className="token" title={fieldLabel(f, lang)}>
+                      {`{${fieldToken(f, lang)}}`}
                     </span>
                   ))}
                 </div>
-                {editedCount > 0 && <span className="hint">แก้ไขในตารางแล้ว {editedCount} ช่อง</span>}
+                {editedCount > 0 && <span className="hint">{t('map.edited', { n: editedCount })}</span>}
               </div>
               <button className="btn" onClick={() => setEditing(true)}>
-                <SlidersHorizontal size={16} /> แก้ไขโดยละเอียด
+                <SlidersHorizontal size={16} /> {t('map.editBtn')}
               </button>
             </div>
           )}
@@ -199,8 +195,8 @@ export default function CertificateTool() {
                 <Scissors size={22} />
               </span>
               <span>
-                <b>แยกไฟล์</b>
-                <small>1 หน้า = 1 ไฟล์ ตั้งชื่อตามผู้รับ</small>
+                <b>{t('mode.split')}</b>
+                <small>{t('mode.splitSub')}</small>
               </span>
             </button>
             <button role="tab" aria-selected={mode === 'table'} className={mode === 'table' ? 'active' : ''} onClick={() => setMode('table')}>
@@ -208,8 +204,8 @@ export default function CertificateTool() {
                 <Table2 size={22} />
               </span>
               <span>
-                <b>ดึงข้อมูลเป็นตาราง</b>
-                <small>ส่งออก Excel / CSV / คัดลอก</small>
+                <b>{t('mode.table')}</b>
+                <small>{t('mode.tableSub')}</small>
               </span>
             </button>
           </div>

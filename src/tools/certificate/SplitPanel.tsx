@@ -1,16 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, Download, Files, Loader2 } from 'lucide-react'
-import type { CertTable, FieldDef } from '../../lib/certificate'
+import { fieldLabel, fieldToken, type CertTable, type FieldDef } from '../../lib/certificate'
+import { useI18n, type Lang } from '../../i18n'
 import { downloadBlob, extractPages, safeFilename, splitToZip, uniqueNames } from '../../lib/files'
 import type { LoadedFile } from './CertificateTool'
 
 interface Token {
-  token: string
+  th: string // {ชื่อ}
+  en: string // {name}
   hint: string
   get: (v: Record<string, string>, page: number, order: number) => string
 }
 
-const PRESETS = ['{ชื่อ}', '{ลำดับ}_{ชื่อ}', '{ชื่อจริง} {นามสกุล}', '{ไฟล์}_หน้า{หน้า}']
+const PRESETS: Record<Lang, string[]> = {
+  th: ['{ชื่อ}', '{ลำดับ}_{ชื่อ}', '{ชื่อจริง} {นามสกุล}', '{ไฟล์}_หน้า{หน้า}'],
+  en: ['{name}', '{order}_{name}', '{first} {last}', '{file}_page{page}'],
+}
 
 interface Props {
   file: LoadedFile
@@ -20,39 +25,62 @@ interface Props {
 }
 
 export default function SplitPanel({ file, table, fields, thumbs }: Props) {
+  const { lang, t } = useI18n()
   const total = file.pages.length
   const [selected, setSelected] = useState<boolean[]>(() => Array(total).fill(true))
-  const [template, setTemplate] = useState(() => (table.fields.some((f) => f.key === 'name') ? '{ชื่อ}' : '{ไฟล์}_หน้า{หน้า}'))
+  const [template, setTemplate] = useState(() => PRESETS[lang][table.fields.some((f) => f.key === 'name') ? 0 : 3])
   const [busy, setBusy] = useState<string>('')
 
   const chosen = selected.map((s, i) => (s ? i : -1)).filter((i) => i >= 0)
   const pad = String(total).length
 
-  // ตัวแปรชื่อไฟล์: ทุกช่องที่มีข้อมูล (รวมช่องที่สร้างเอง) + ลำดับ/หน้า/ไฟล์
+  // ตัวแปรชื่อไฟล์: ทุกช่องที่มีข้อมูล (รวมช่องที่สร้างเอง) + ลำดับ/หน้า/ไฟล์ — ใช้ได้ทั้งชื่อไทยและอังกฤษ
   const tokens = useMemo<Token[]>(
     () => [
       ...fields
-        .filter((f) => table.fields.some((t) => t.key === f.key))
-        .map((f) => ({ token: `{${f.token}}`, hint: f.label, get: (v: Record<string, string>) => v[f.key] ?? '' })),
-      { token: '{ลำดับ}', hint: 'ลำดับ 01, 02, …', get: (_v, _p, order) => String(order).padStart(pad, '0') },
-      { token: '{หน้า}', hint: 'เลขหน้าในไฟล์เดิม', get: (_v, page) => String(page) },
-      { token: '{ไฟล์}', hint: 'ชื่อไฟล์ต้นฉบับ', get: () => file.name },
+        .filter((f) => table.fields.some((x) => x.key === f.key))
+        .map((f) => ({
+          th: `{${fieldToken(f, 'th')}}`,
+          en: `{${fieldToken(f, 'en')}}`,
+          hint: fieldLabel(f, lang),
+          get: (v: Record<string, string>) => v[f.key] ?? '',
+        })),
+      { th: '{ลำดับ}', en: '{order}', hint: t('tok.order'), get: (_v, _p, order) => String(order).padStart(pad, '0') },
+      { th: '{หน้า}', en: '{page}', hint: t('tok.page'), get: (_v, page) => String(page) },
+      { th: '{ไฟล์}', en: '{file}', hint: t('tok.file'), get: () => file.name },
     ],
-    [fields, table.fields, pad, file.name],
+    [fields, table.fields, pad, file.name, lang, t],
   )
 
+  // เปลี่ยนภาษาแล้ว แปลงตัวแปรในชื่อไฟล์เป็นภาษาใหม่ด้วย
+  useEffect(() => {
+    setTemplate((tpl) => {
+      let out = tpl
+      for (const tk of [...tokens].sort((a, b) => b.th.length - a.th.length)) {
+        const from = lang === 'en' ? tk.th : tk.en
+        out = out.split(from).join(lang === 'en' ? tk.en : tk.th)
+      }
+      return out
+    })
+    // ตั้งใจให้ทำงานเฉพาะตอนเปลี่ยนภาษา
+  }, [lang])
+
   const names = useMemo(() => {
-    // แทนตัวแปรที่ยาวก่อน เพื่อไม่ให้ {ชื่อ} ไปกิน {ชื่อจริง}
-    const sorted = [...tokens].sort((a, b) => b.token.length - a.token.length)
+    // แทนตัวแปรที่ยาวก่อน เพื่อไม่ให้ตัวสั้นไปกินบางส่วนของตัวยาว
+    const pairs = tokens.flatMap((tk) => [
+      { token: tk.th, get: tk.get },
+      { token: tk.en, get: tk.get },
+    ])
+    pairs.sort((a, b) => b.token.length - a.token.length)
     const raw = file.pages.map((p, i) => {
       const values = table.rows[i]?.values ?? {}
       let out = template
-      for (const t of sorted) out = out.split(t.token).join(t.get(values, p.index + 1, i + 1))
+      for (const tk of pairs) out = out.split(tk.token).join(tk.get(values, p.index + 1, i + 1))
       out = safeFilename(out)
-      return out === 'file' ? `${file.name}_หน้า${i + 1}` : out
+      return out === 'file' ? file.name + t('file.pageSuffix', { n: i + 1 }) : out
     })
     return uniqueNames(raw)
-  }, [file, table, template, tokens])
+  }, [file, table, template, tokens, t])
 
   function toggle(i: number) {
     setSelected((s) => s.map((v, j) => (j === i ? !v : v)))
@@ -64,7 +92,7 @@ export default function SplitPanel({ file, table, fields, thumbs }: Props) {
       await fn()
     } catch (e) {
       console.error(e)
-      alert('เกิดข้อผิดพลาดระหว่างสร้างไฟล์')
+      alert(t('split.error'))
     } finally {
       setBusy('')
     }
@@ -77,12 +105,12 @@ export default function SplitPanel({ file, table, fields, thumbs }: Props) {
         chosen.map((i) => ({ pageIndex: i, filename: names[i] })),
         (d, t) => setBusy(`zip ${d}/${t}`),
       )
-      downloadBlob(blob, `${safeFilename(file.name)}_แยกไฟล์.zip`)
+      downloadBlob(blob, `${safeFilename(file.name)}${t('file.zipSuffix')}.zip`)
     })
 
   const downloadMerged = () =>
     run('merge', async () => {
-      downloadBlob(await extractPages(file.bytes, chosen), `${safeFilename(file.name)}_เลือก${chosen.length}หน้า.pdf`)
+      downloadBlob(await extractPages(file.bytes, chosen), `${safeFilename(file.name)}${t('file.mergeSuffix', { n: chosen.length })}.pdf`)
     })
 
   const downloadOne = (i: number) =>
@@ -94,23 +122,23 @@ export default function SplitPanel({ file, table, fields, thumbs }: Props) {
     <div className="panel">
       <div className="card settings">
         <label className="field">
-          <span className="field-label">ตั้งชื่อไฟล์</span>
+          <span className="field-label">{t('split.nameLabel')}</span>
           <div className="input-wrap">
             <input value={template} onChange={(e) => setTemplate(e.target.value)} spellCheck={false} />
             <span className="suffix">.pdf</span>
           </div>
         </label>
         <div className="chips">
-          <span className="chips-label">แทรก:</span>
-          {tokens.map((t) => (
-            <button key={t.token} className="chip" title={t.hint} onClick={() => setTemplate((s) => s + t.token)}>
-              {t.token}
+          <span className="chips-label">{t('split.insert')}</span>
+          {tokens.map((tk) => (
+            <button key={tk.th} className="chip" title={tk.hint} onClick={() => setTemplate((s) => s + tk[lang])}>
+              {tk[lang]}
             </button>
           ))}
         </div>
         <div className="chips">
-          <span className="chips-label">แบบสำเร็จ:</span>
-          {PRESETS.map((p) => (
+          <span className="chips-label">{t('split.presets')}</span>
+          {PRESETS[lang].map((p) => (
             <button key={p} className={`chip${template === p ? ' on' : ''}`} onClick={() => setTemplate(p)}>
               {p}
             </button>
@@ -120,22 +148,22 @@ export default function SplitPanel({ file, table, fields, thumbs }: Props) {
 
       <div className="toolbar">
         <div className="sel">
-          <b>เลือกแล้ว {chosen.length}</b> / {total} หน้า
+          <b>{t('split.selected', { n: chosen.length })}</b> {t('split.ofPages', { total })}
           <button className="link" onClick={() => setSelected(Array(total).fill(true))}>
-            เลือกทั้งหมด
+            {t('split.selectAll')}
           </button>
           <button className="link" onClick={() => setSelected(Array(total).fill(false))}>
-            ไม่เลือกเลย
+            {t('split.selectNone')}
           </button>
         </div>
         <div className="actions">
-          <button className="btn" disabled={!chosen.length || !!busy} onClick={downloadMerged} title="รวมหน้าที่เลือกเป็น PDF ไฟล์เดียว">
+          <button className="btn" disabled={!chosen.length || !!busy} onClick={downloadMerged} title={t('split.mergeTitle')}>
             {busy === 'merge' ? <Loader2 size={16} className="spin" /> : <Files size={16} />}
-            {busy === 'merge' ? 'กำลังสร้าง…' : 'รวมหน้าที่เลือกเป็นไฟล์เดียว'}
+            {busy === 'merge' ? t('split.creating') : t('split.merge')}
           </button>
           <button className="btn primary" disabled={!chosen.length || !!busy} onClick={downloadZip}>
             {busy.startsWith('zip') ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-            {busy.startsWith('zip') ? `กำลังแยก… ${busy.slice(4)}` : `ดาวน์โหลด ZIP (${chosen.length} ไฟล์)`}
+            {busy.startsWith('zip') ? t('split.splitting', { p: busy.slice(4) }) : t('split.zip', { n: chosen.length })}
           </button>
         </div>
       </div>
@@ -143,8 +171,8 @@ export default function SplitPanel({ file, table, fields, thumbs }: Props) {
       <div className="page-grid">
         {file.pages.map((p, i) => (
           <div key={p.index} className={`page-card${selected[i] ? ' on' : ''}`}>
-            <button className="thumb" onClick={() => toggle(i)} aria-pressed={selected[i]} aria-label={`เลือกหน้า ${i + 1}`}>
-              {thumbs[i] ? <img src={thumbs[i]} alt={`หน้า ${i + 1}`} /> : <div className="thumb-ph" />}
+            <button className="thumb" onClick={() => toggle(i)} aria-pressed={selected[i]} aria-label={t('split.pageAria', { n: i + 1 })}>
+              {thumbs[i] ? <img src={thumbs[i]} alt={t('split.pageAlt', { n: i + 1 })} /> : <div className="thumb-ph" />}
               <span className="check" aria-hidden>
                 {selected[i] && <Check size={14} strokeWidth={3} />}
               </span>
@@ -154,7 +182,7 @@ export default function SplitPanel({ file, table, fields, thumbs }: Props) {
               <span className="page-name" title={`${names[i]}.pdf`}>
                 {names[i]}.pdf
               </span>
-              <button className="icon-btn" title="ดาวน์โหลดหน้านี้" disabled={!!busy} onClick={() => downloadOne(i)}>
+              <button className="icon-btn" title={t('split.downloadOne')} disabled={!!busy} onClick={() => downloadOne(i)}>
                 <Download size={15} />
               </button>
             </div>

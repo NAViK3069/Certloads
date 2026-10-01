@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, Copy, Eye, EyeOff, FileSpreadsheet, FileText, GripVertical, RotateCcw, SlidersHorizontal } from 'lucide-react'
-import type { CertTable, FieldDef } from '../../lib/certificate'
+import { fieldLabel, type CertTable, type FieldDef } from '../../lib/certificate'
+import { useI18n } from '../../i18n'
 import { downloadCsv, downloadXlsx, gridToTsv, safeFilename, type Grid } from '../../lib/files'
 import type { LoadedFile } from './CertificateTool'
 
@@ -32,15 +33,16 @@ interface Props {
 }
 
 export default function TablePanel({ file, table, fields, view, onView, onEdit, onResetEdits, editedCount, onOpenEditor }: Props) {
+  const { lang, t } = useI18n()
   const [copied, setCopied] = useState(false)
   const [drag, setDrag] = useState<string | null>(null)
   const [dropAt, setDropAt] = useState<string | null>(null)
 
   // คอลัมน์ทั้งหมดที่มีข้อมูล เรียงตาม view.order (ช่องใหม่ที่ยังไม่อยู่ใน order ต่อท้าย)
   const available: Col[] = [
-    { key: COL_NO, label: 'ลำดับ', kind: 'no' },
-    { key: COL_PAGE, label: 'หน้า', kind: 'page' },
-    ...table.fields.map((f) => ({ key: f.key, label: f.label, kind: 'field' as const })),
+    { key: COL_NO, label: t('col.no'), kind: 'no' },
+    { key: COL_PAGE, label: t('col.page'), kind: 'page' },
+    ...table.fields.map((f) => ({ key: f.key, label: fieldLabel(f, lang), kind: 'field' as const })),
   ]
   const rank = (k: string) => {
     const i = view.order.indexOf(k)
@@ -131,11 +133,11 @@ export default function TablePanel({ file, table, fields, view, onView, onEdit, 
   if (!table.fields.length) {
     return (
       <div className="alert warn">
-        ยังไม่มีช่องข้อมูล —{' '}
+        {t('table.noFields1')}{' '}
         <button className="link" onClick={onOpenEditor}>
-          เปิดตัวแก้ไขโดยละเอียด
+          {t('table.openEditor')}
         </button>{' '}
-        เพื่อผูกข้อความบนใบกับช่องข้อมูล
+        {t('table.noFields2')}
       </div>
     )
   }
@@ -144,11 +146,11 @@ export default function TablePanel({ file, table, fields, view, onView, onEdit, 
     <div className="panel">
       {constants.length > 0 && (
         <div className="card summary">
-          <div className="summary-title">ข้อมูลที่เหมือนกันทุกใบ</div>
+          <div className="summary-title">{t('table.constants')}</div>
           <dl>
             {constants.map((f) => (
               <div key={f.key}>
-                <dt>{view.labels[f.key] || f.label}</dt>
+                <dt>{view.labels[f.key] || fieldLabel(f, lang)}</dt>
                 <dd>{table.rows[0].values[f.key]}</dd>
               </div>
             ))}
@@ -158,8 +160,8 @@ export default function TablePanel({ file, table, fields, view, onView, onEdit, 
 
       <div className="card settings">
         <div className="settings-head">
-          <span className="field-label">คอลัมน์</span>
-          <span className="hint">ลากเพื่อสลับตำแหน่ง · กดรูปตาเพื่อซ่อน/แสดง</span>
+          <span className="field-label">{t('table.columns')}</span>
+          <span className="hint">{t('table.colHint')}</span>
         </div>
         <div className="col-list">
           {allCols.map((c) => {
@@ -172,7 +174,7 @@ export default function TablePanel({ file, table, fields, view, onView, onEdit, 
               >
                 <GripVertical size={14} className="grip" aria-hidden />
                 <span>{label(c)}</span>
-                <button className="mini" onClick={() => toggle(c.key)} title={hidden ? 'แสดงคอลัมน์' : 'ซ่อนคอลัมน์'}>
+                <button className="mini" onClick={() => toggle(c.key)} title={hidden ? t('table.show') : t('table.hide')}>
                   {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
@@ -180,26 +182,26 @@ export default function TablePanel({ file, table, fields, view, onView, onEdit, 
           })}
         </div>
         <p className="hint">
-          คลิกช่องในตารางเพื่อแก้ข้อความ · คลิกหัวคอลัมน์เพื่อเปลี่ยนชื่อหัว · ข้อมูลผิดช่องหรือสลับกัน?{' '}
+          {t('table.hint')}{' '}
           <button className="link" onClick={onOpenEditor}>
-            <SlidersHorizontal size={13} /> แก้ไขการจับข้อมูลโดยละเอียด
+            <SlidersHorizontal size={13} /> {t('table.fixLink')}
           </button>
         </p>
       </div>
 
       <div className="toolbar">
         <div className="sel">
-          <b>{table.rows.length}</b> แถว · <b>{cols.length}</b> คอลัมน์
+          <b>{table.rows.length}</b> {t('table.rows')} · <b>{cols.length}</b> {t('table.cols')}
           {editedCount > 0 && (
-            <button className="link" onClick={onResetEdits} title="ยกเลิกการแก้ไขในตารางทั้งหมด">
-              <RotateCcw size={13} /> ล้างที่แก้เอง ({editedCount})
+            <button className="link" onClick={onResetEdits} title={t('table.resetTitle')}>
+              <RotateCcw size={13} /> {t('table.resetEdits', { n: editedCount })}
             </button>
           )}
         </div>
         <div className="actions">
           <button className="btn" onClick={copy}>
             {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? 'คัดลอกแล้ว' : 'คัดลอก (วางใน Excel/Sheets)'}
+            {copied ? t('table.copied') : t('table.copy')}
           </button>
           <button className="btn" onClick={() => downloadCsv(grid(), base)}>
             <FileText size={16} /> CSV
@@ -217,17 +219,17 @@ export default function TablePanel({ file, table, fields, view, onView, onEdit, 
               {cols.map((c, ci) => (
                 <th key={c.key} className={`${c.kind !== 'field' ? 'num' : ''}${dropClass(c.key)}`} {...dragProps(c.key)}>
                   <div className="th-inner">
-                    <button className="mini" disabled={ci === 0} onClick={() => move(c.key, -1)} title="ย้ายไปทางซ้าย">
+                    <button className="mini" disabled={ci === 0} onClick={() => move(c.key, -1)} title={t('table.moveLeft')}>
                       <ChevronLeft size={14} />
                     </button>
                     <input
                       className="head-input"
                       value={label(c)}
                       onChange={(e) => onView({ ...view, labels: { ...view.labels, [c.key]: e.target.value } })}
-                      aria-label="ชื่อหัวคอลัมน์"
+                      aria-label={t('table.headerAria')}
                       size={Math.max(4, label(c).length)}
                     />
-                    <button className="mini" disabled={ci === cols.length - 1} onClick={() => move(c.key, 1)} title="ย้ายไปทางขวา">
+                    <button className="mini" disabled={ci === cols.length - 1} onClick={() => move(c.key, 1)} title={t('table.moveRight')}>
                       <ChevronRight size={14} />
                     </button>
                   </div>

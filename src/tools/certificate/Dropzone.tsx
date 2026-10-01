@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
 import { FileUp } from 'lucide-react'
+import { useI18n } from '../../i18n'
 
 export default function Dropzone({ onFile }: { onFile: (f: File) => void }) {
   const [over, setOver] = useState(false)
   const [bad, setBad] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const { t } = useI18n()
 
   function pick(files: FileList | null) {
     const f = files?.[0]
@@ -36,9 +38,11 @@ export default function Dropzone({ onFile }: { onFile: (f: File) => void }) {
       <div className="drop-icon" aria-hidden>
         <FileUp size={40} strokeWidth={1.6} />
       </div>
-      <div className="drop-title">ลากไฟล์ PDF มาวางที่นี่</div>
-      <div className="drop-sub">หรือ <u>คลิกเพื่อเลือกไฟล์</u></div>
-      {bad && <div className="drop-bad">รองรับเฉพาะไฟล์ .pdf</div>}
+      <div className="drop-title">{t('drop.title')}</div>
+      <div className="drop-sub">
+        {t('drop.or')} <u>{t('drop.click')}</u>
+      </div>
+      {bad && <div className="drop-bad">{t('drop.bad')}</div>}
     </div>
   )
 }

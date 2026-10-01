@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Link2, Loader2, Plus, RotateCcw, Trash2, Unlink, X, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   allFields,
+  fieldLabel,
+  fieldToken,
   matchLines,
   newId,
   pageValues,
@@ -12,6 +14,7 @@ import {
   type Mapping,
 } from '../../lib/certificate'
 import type { PageInfo, TextLine } from '../../lib/pdf'
+import { useI18n } from '../../i18n'
 
 interface Props {
   pages: PageInfo[]
@@ -31,6 +34,7 @@ function hueOf(fields: FieldDef[], key: string) {
 export default function MappingEditor({ pages, mapping, onChange, onReset, renderPage, onClose }: Props) {
   const [pageIdx, setPageIdx] = useState(() => Math.max(0, pages.findIndex((p) => p.lines.length > 0)))
   const [selected, setSelected] = useState<number | null>(null) // index ของบรรทัดในหน้าปัจจุบัน
+  const { lang, t } = useI18n()
   const [zoom, setZoom] = useState(1)
   const [images, setImages] = useState<Record<number, string>>({})
   const [newName, setNewName] = useState('') // ชื่อช่องใหม่จากแถบข้อความที่เลือก
@@ -41,6 +45,7 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
   const page = pages[pageIdx]
   const fields = allFields(mapping)
   const fieldOf = (key: string) => fields.find((f) => f.key === key)
+  const tok = (f?: FieldDef) => '{' + (f ? fieldToken(f, lang) : '?') + '}'
 
   // รูปหน้าใหญ่ — วาดเมื่อเปิดดูหน้านั้น แล้วเก็บไว้
   useEffect(() => {
@@ -118,10 +123,16 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
     setBindings(mapping.bindings.filter((b) => b.id !== id))
   }
 
+  // หาช่องที่ชื่อซ้ำ (เทียบทั้งชื่อไทยและอังกฤษ)
+  function findField(label: string) {
+    const tk = label.replace(/\s+/g, '')
+    return fields.find((f) => [f.label, f.labelEn].includes(label) || [f.token, f.tokenEn].includes(tk))
+  }
+
   function addCustomField(name: string): string | null {
     const label = name.replace(/[{}]/g, '').trim()
     if (!label) return null
-    const dup = fields.find((f) => f.label === label || f.token === label.replace(/\s+/g, ''))
+    const dup = findField(label)
     if (dup) return dup.key
     const f: FieldDef = { key: newId('c_'), token: label.replace(/\s+/g, ''), label, custom: true }
     onChange({ ...mapping, customFields: [...mapping.customFields, f] })
@@ -131,7 +142,7 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
   function createAndBind(line: TextLine, existing?: Binding) {
     const label = newName.replace(/[{}]/g, '').trim()
     if (!label) return
-    const dup = fields.find((f) => f.label === label || f.token === label.replace(/\s+/g, ''))
+    const dup = findField(label)
     const f: FieldDef = dup ?? { key: newId('c_'), token: label.replace(/\s+/g, ''), label, custom: true }
     const customFields = dup ? mapping.customFields : [...mapping.customFields, f]
     const bindings = existing
@@ -144,7 +155,10 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
   function renameField(key: string, label: string) {
     onChange({
       ...mapping,
-      customFields: mapping.customFields.map((f) => (f.key === key ? { ...f, label, token: label.replace(/[{}\s]/g, '') || f.token } : f)),
+      // ผู้ใช้ตั้งชื่อเองแล้ว ใช้ชื่อนี้ทั้งสองภาษา
+      customFields: mapping.customFields.map((f) =>
+        f.key === key ? { ...f, label, token: label.replace(/[{}\s]/g, '') || f.token, labelEn: undefined, tokenEn: undefined } : f,
+      ),
     })
   }
 
@@ -175,9 +189,9 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
             className={`pick${on ? ' on' : ''}`}
             style={{ '--h': hueOf(fields, f.key) } as React.CSSProperties}
             onClick={() => bindLine(line, f.key, b)}
-            title={f.label}
+            title={fieldLabel(f, lang)}
           >
-            {`{${f.token}}`}
+            {tok(f)}
           </button>
         )
       })}
@@ -185,30 +199,30 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
   )
 
   return (
-    <div className="editor-backdrop" role="dialog" aria-modal="true" aria-label="แก้ไขการจับข้อมูลโดยละเอียด">
+    <div className="editor-backdrop" role="dialog" aria-modal="true" aria-label={t('ed.title')}>
       <div className="editor">
         <header className="editor-head">
           <div className="editor-title">
-            <b>แก้ไขการจับข้อมูลโดยละเอียด</b>
-            <span className="hint">คลิกข้อความบนใบ แล้วเลือกว่าจะผูกกับช่องไหน</span>
+            <b>{t('ed.title')}</b>
+            <span className="hint">{t('ed.sub')}</span>
           </div>
           <div className="pager">
-            <button className="icon-btn" onClick={() => go(-1)} disabled={pageIdx === 0} title="หน้าก่อน (←)">
+            <button className="icon-btn" onClick={() => go(-1)} disabled={pageIdx === 0} title={t('ed.prev')}>
               <ChevronLeft size={18} />
             </button>
             <span>
-              หน้า <b>{pageIdx + 1}</b> / {pages.length}
+              {t('ed.page')} <b>{pageIdx + 1}</b> / {pages.length}
             </span>
-            <button className="icon-btn" onClick={() => go(1)} disabled={pageIdx === pages.length - 1} title="หน้าถัดไป (→)">
+            <button className="icon-btn" onClick={() => go(1)} disabled={pageIdx === pages.length - 1} title={t('ed.next')}>
               <ChevronRight size={18} />
             </button>
           </div>
           <div className="pager">
-            <button className="icon-btn" onClick={() => setZoom((z) => Math.max(1, z - 0.5))} disabled={zoom <= 1} title="ย่อ">
+            <button className="icon-btn" onClick={() => setZoom((z) => Math.max(1, z - 0.5))} disabled={zoom <= 1} title={t('ed.zoomOut')}>
               <ZoomOut size={18} />
             </button>
             <span className="zoom-val">{Math.round(zoom * 100)}%</span>
-            <button className="icon-btn" onClick={() => setZoom((z) => Math.min(3, z + 0.5))} disabled={zoom >= 3} title="ขยาย">
+            <button className="icon-btn" onClick={() => setZoom((z) => Math.min(3, z + 0.5))} disabled={zoom >= 3} title={t('ed.zoomIn')}>
               <ZoomIn size={18} />
             </button>
           </div>
@@ -216,18 +230,18 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
             <button
               className="btn ghost"
               onClick={() => {
-                if (confirm('ล้างการผูกทั้งหมด แล้วให้ระบบตรวจหาใหม่อัตโนมัติ?')) {
+                if (confirm(t('ed.resetConfirm'))) {
                   onReset()
                   setSelected(null)
                 }
               }}
             >
-              <RotateCcw size={16} /> ตรวจหาใหม่อัตโนมัติ
+              <RotateCcw size={16} /> {t('ed.reset')}
             </button>
             <button className="btn primary" onClick={onClose}>
-              เสร็จสิ้น
+              {t('ed.done')}
             </button>
-            <button className="icon-btn" onClick={onClose} title="ปิด (Esc)" aria-label="ปิด">
+            <button className="icon-btn" onClick={onClose} title={t('ed.closeEsc')} aria-label={t('close')}>
               <X size={18} />
             </button>
           </div>
@@ -240,10 +254,10 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
               style={{ aspectRatio: `${page.width} / ${page.height}`, width: `${zoom * 100}%`, maxWidth: 1100 * zoom }}
             >
               {images[pageIdx] ? (
-                <img src={images[pageIdx]} alt={`หน้า ${pageIdx + 1}`} draggable={false} />
+                <img src={images[pageIdx]} alt={t('split.pageAlt', { n: pageIdx + 1 })} draggable={false} />
               ) : (
                 <div className="stage-loading">
-                  <Loader2 size={22} className="spin" /> กำลังโหลดรูป…
+                  <Loader2 size={22} className="spin" /> {t('ed.loadingImg')}
                 </div>
               )}
               {page.lines.map((l, i) => {
@@ -273,7 +287,7 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
                       <span className="line-tag">
                         {bs
                           .filter((b) => b.field)
-                          .map((b) => `{${fieldOf(b.field)?.token ?? '?'}}`)
+                          .map((b) => tok(fieldOf(b.field)))
                           .join(' ')}
                       </span>
                     )}
@@ -287,9 +301,9 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
             {selLine ? (
               <div className="side-section">
                 <div className="side-head">
-                  <span className="field-label">ข้อความที่เลือก</span>
+                  <span className="field-label">{t('ed.selected')}</span>
                   <button className="link" onClick={() => setSelected(null)}>
-                    ปิด
+                    {t('close')}
                   </button>
                 </div>
                 <blockquote className="line-text">{selLine.text}</blockquote>
@@ -297,18 +311,18 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
                 {selBindings.length === 0 && (
                   <>
                     <div className="side-sub">
-                      <Link2 size={14} /> ผูกกับช่อง
+                      <Link2 size={14} /> {t('ed.bindTo')}
                     </div>
                     {fieldPicker(selLine)}
                     <div className="new-field">
                       <input
-                        placeholder="หรือพิมพ์ชื่อช่องใหม่ เช่น ตำแหน่ง"
+                        placeholder={t('ed.newPlaceholder')}
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && createAndBind(selLine)}
                       />
                       <button className="btn" onClick={() => createAndBind(selLine)} disabled={!newName.trim()}>
-                        <Plus size={16} /> สร้างและผูก
+                        <Plus size={16} /> {t('ed.createBind')}
                       </button>
                     </div>
                   </>
@@ -319,15 +333,15 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
                   return (
                     <div key={b.id} className="binding-card" style={{ '--h': hueOf(fields, b.field) } as React.CSSProperties}>
                       <div className="side-sub">
-                        <Link2 size={14} /> {selBindings.length > 1 ? `ช่องที่ ${bi + 1}` : 'ผูกกับช่อง'}
-                        <button className="link danger" onClick={() => removeBinding(b.id)} title="เลิกผูกบรรทัดนี้">
-                          <Unlink size={13} /> เลิกผูก
+                        <Link2 size={14} /> {selBindings.length > 1 ? t('ed.fieldN', { n: bi + 1 }) : t('ed.bindTo')}
+                        <button className="link danger" onClick={() => removeBinding(b.id)} title={t('ed.unbindTitle')}>
+                          <Unlink size={13} /> {t('ed.unbind')}
                         </button>
                       </div>
                       {fieldPicker(selLine, b)}
                       <div className="new-field">
                         <input
-                          placeholder="ย้ายไปช่องใหม่ที่สร้างเอง…"
+                          placeholder={t('ed.movePlaceholder')}
                           value={newName}
                           onChange={(e) => setNewName(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && createAndBind(selLine, b)}
@@ -339,21 +353,21 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
 
                       <div className="strip-grid">
                         <label>
-                          <span>ตัดข้อความด้านหน้า</span>
+                          <span>{t('ed.stripStart')}</span>
                           <input
                             value={b.stripStart}
-                            placeholder="เช่น วันที่"
+                            placeholder={t('ed.stripStartPh')}
                             onChange={(e) => updateBinding(b.id, { stripStart: e.target.value })}
                           />
                         </label>
                         <label>
-                          <span>ตัดข้อความด้านหลัง</span>
+                          <span>{t('ed.stripEnd')}</span>
                           <input value={b.stripEnd} placeholder="—" onChange={(e) => updateBinding(b.id, { stripEnd: e.target.value })} />
                         </label>
                       </div>
                       <div className="result">
-                        <span>ค่าที่ได้</span>
-                        <b>{value || <i className="hint">(ว่าง)</i>}</b>
+                        <span>{t('ed.result')}</span>
+                        <b>{value || <i className="hint">{t('ed.empty')}</i>}</b>
                       </div>
                     </div>
                   )
@@ -366,28 +380,27 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
                       setBindings([...mapping.bindings, { id: newId(), field: '', slot: selBindings[0].slot, stripStart: '', stripEnd: '' }])
                     }
                   >
-                    <Plus size={13} /> บรรทัดนี้มีหลายข้อมูล? ผูกเพิ่มอีกช่อง
+                    <Plus size={13} /> {t('ed.addAnother')}
                   </button>
                 )}
               </div>
             ) : (
               <div className="side-section">
                 <p className="hint">
-                  กรอบสีคือข้อความที่ผูกกับช่องแล้ว กรอบเส้นประคือข้อความที่ยังไม่ได้ใช้ — คลิกเพื่อแก้ไข ระบบจะใช้ตำแหน่งเดียวกันนี้กับทุกหน้า
-                  ลองกดเปลี่ยนหน้าเพื่อตรวจว่าทุกใบดึงถูกช่อง
+                  {t('ed.help')}
                 </p>
               </div>
             )}
 
             {missing.length > 0 && (
               <div className="alert warn small">
-                หน้านี้ไม่พบข้อความสำหรับ: {missing.map((b) => `{${fieldOf(b.field)?.token ?? '?'}}`).join(', ')}
+                {t('ed.missing', { list: missing.map((b) => tok(fieldOf(b.field))).join(', ') })}
               </div>
             )}
 
             <div className="side-section">
               <div className="side-head">
-                <span className="field-label">ช่องข้อมูล · ค่าในหน้านี้</span>
+                <span className="field-label">{t('ed.fieldsTitle')}</span>
               </div>
               <ul className="field-list">
                 {fields.map((f) => {
@@ -396,19 +409,24 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
                   const v = values[f.key]
                   return (
                     <li key={f.key} className={bound || derived ? '' : 'unbound'} style={{ '--h': hueOf(fields, f.key) } as React.CSSProperties}>
-                      <button className="field-token" onClick={() => selectField(f.key)} disabled={!bound} title={bound ? 'ไปที่ข้อความนี้' : ''}>
-                        {`{${f.token}}`}
+                      <button className="field-token" onClick={() => selectField(f.key)} disabled={!bound} title={bound ? t('ed.goTo') : ''}>
+                        {tok(f)}
                       </button>
                       {f.custom ? (
-                        <input className="field-name" value={f.label} onChange={(e) => renameField(f.key, e.target.value)} aria-label="ชื่อช่อง" />
+                        <input
+                          className="field-name"
+                          value={fieldLabel(f, lang)}
+                          onChange={(e) => renameField(f.key, e.target.value)}
+                          aria-label={t('ed.fieldName')}
+                        />
                       ) : (
-                        <span className="field-name">{f.label}</span>
+                        <span className="field-name">{fieldLabel(f, lang)}</span>
                       )}
                       <span className="field-val" title={v}>
-                        {bound ? v || <i>ไม่พบ</i> : derived ? v || <i>แยกจากชื่อ-นามสกุล</i> : <i>ยังไม่ได้ผูก</i>}
+                        {bound ? v || <i>{t('ed.notFound')}</i> : derived ? v || <i>{t('ed.derived')}</i> : <i>{t('ed.unbound')}</i>}
                       </span>
                       {f.custom && (
-                        <button className="mini danger" onClick={() => deleteField(f.key)} title="ลบช่องนี้">
+                        <button className="mini danger" onClick={() => deleteField(f.key)} title={t('ed.delete')}>
                           <Trash2 size={14} />
                         </button>
                       )}
@@ -423,9 +441,9 @@ export default function MappingEditor({ pages, mapping, onChange, onReset, rende
                   if (addCustomField(newField)) setNewField('')
                 }}
               >
-                <input placeholder="สร้างช่องเอง เช่น ตำแหน่ง, แผนก" value={newField} onChange={(e) => setNewField(e.target.value)} />
+                <input placeholder={t('ed.createPh')} value={newField} onChange={(e) => setNewField(e.target.value)} />
                 <button className="btn" disabled={!newField.trim()}>
-                  <Plus size={16} /> สร้างช่อง
+                  <Plus size={16} /> {t('ed.create')}
                 </button>
               </form>
             </div>

@@ -7,20 +7,25 @@ export interface FieldDef {
   key: string
   token: string // ใช้ในชื่อไฟล์ เช่น {ชื่อ}
   label: string // หัวคอลัมน์
+  tokenEn?: string // ชื่อภาษาอังกฤษ (ช่องที่ผู้ใช้สร้างเองไม่มี จะใช้ชื่อเดิม)
+  labelEn?: string
   custom?: boolean
 }
 
 export const BASE_FIELDS: FieldDef[] = [
-  { key: 'name', token: 'ชื่อ', label: 'ชื่อ-นามสกุล' },
-  { key: 'prefix', token: 'คำนำหน้า', label: 'คำนำหน้า' },
-  { key: 'first', token: 'ชื่อจริง', label: 'ชื่อ' },
-  { key: 'last', token: 'นามสกุล', label: 'นามสกุล' },
-  { key: 'certNo', token: 'เลขที่', label: 'เลขที่' },
-  { key: 'code', token: 'รหัส', label: 'รหัส' },
-  { key: 'course', token: 'หลักสูตร', label: 'หลักสูตร' },
-  { key: 'date', token: 'วันที่', label: 'วันที่' },
-  { key: 'org', token: 'หน่วยงาน', label: 'หน่วยงาน' },
+  { key: 'name', token: 'ชื่อ', label: 'ชื่อ-นามสกุล', tokenEn: 'name', labelEn: 'Full name' },
+  { key: 'prefix', token: 'คำนำหน้า', label: 'คำนำหน้า', tokenEn: 'title', labelEn: 'Title' },
+  { key: 'first', token: 'ชื่อจริง', label: 'ชื่อ', tokenEn: 'first', labelEn: 'First name' },
+  { key: 'last', token: 'นามสกุล', label: 'นามสกุล', tokenEn: 'last', labelEn: 'Last name' },
+  { key: 'certNo', token: 'เลขที่', label: 'เลขที่', tokenEn: 'no', labelEn: 'Certificate No.' },
+  { key: 'code', token: 'รหัส', label: 'รหัส', tokenEn: 'id', labelEn: 'ID' },
+  { key: 'course', token: 'หลักสูตร', label: 'หลักสูตร', tokenEn: 'course', labelEn: 'Course' },
+  { key: 'date', token: 'วันที่', label: 'วันที่', tokenEn: 'date', labelEn: 'Date' },
+  { key: 'org', token: 'หน่วยงาน', label: 'หน่วยงาน', tokenEn: 'org', labelEn: 'Organization' },
 ]
+
+export const fieldLabel = (f: FieldDef, lang: 'th' | 'en') => (lang === 'en' && f.labelEn) || f.label
+export const fieldToken = (f: FieldDef, lang: 'th' | 'en') => (lang === 'en' && f.tokenEn) || f.token
 
 // ช่องที่แยกจากชื่อเต็มได้อัตโนมัติ ถ้าไม่ได้ผูกไว้เอง
 export const NAME_PARTS = ['prefix', 'first', 'last'] as const
@@ -176,7 +181,14 @@ export function autoMapping(pages: PageInfo[]): Mapping {
     } else {
       // บรรทัดที่ไม่รู้จัก เก็บไว้เป็น "ข้อความ N" ให้ผู้ใช้เลือกผูกใหม่เองได้
       extra++
-      const f: FieldDef = { key: `c_auto${extra}`, token: `ข้อความ${extra}`, label: `ข้อความ ${extra}`, custom: true }
+      const f: FieldDef = {
+        key: `c_auto${extra}`,
+        token: `ข้อความ${extra}`,
+        label: `ข้อความ ${extra}`,
+        tokenEn: `text${extra}`,
+        labelEn: `Text ${extra}`,
+        custom: true,
+      }
       customFields.push(f)
       bindings.push({ id: newId(), field: f.key, slot: slotOf(l), stripStart: '', stripEnd: '' })
     }

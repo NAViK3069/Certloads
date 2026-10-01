@@ -1219,3 +1219,48 @@ input.field-name {
     overflow: visible;
   }
 }
+
+/* ---------- language switch ---------- */
+.lang-switch {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.lang-icon {
+  margin: 0 4px 0 6px;
+  color: var(--muted);
+}
+
+.lang-switch button {
+  border: none;
+  background: none;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lang-switch button.on {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    gap: 10px 16px;
+  }
+
+  /* ภาษาอยู่มุมขวาบนคู่กับโลโก้ แท็บเครื่องมือขึ้นบรรทัดใหม่ */
+  .tools-nav {
+    order: 3;
+    width: 100%;
+  }
+}
